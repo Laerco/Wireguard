@@ -1,0 +1,56 @@
+---
+- name: Generate WireGuard private key
+  hosts: wireguard
+  tasks:
+    - name: Generate private key
+      shell: wg genkey
+      register: private_key_result
+
+    - name: Set private key fact
+      set_fact:
+        server_private_key: "{{ private_key_result.stdout }}"
+
+    - name: Generate server public key
+      shell: wg pubkey <<< "{{ server_private_key }}"
+      register: server_public_key_result
+
+    - name: Set server public key fact
+      set_fact:
+        server_public_key: "{{ server_public_key_result.stdout }}"
+
+- name: Configure WireGuard client
+  hosts: wireguard
+  vars:
+    EndPoint: "192.168.0.31:555"
+  tasks:
+    - name: Set client configuration variables for wg0-nginx.conf
+      ini_file:
+        dest: /etc/wireguard/wg0-nginx.conf
+        section: Peer
+        option: "{{ item.option }}"
+        value: "{{ item.value }}"
+      loop:
+        - { option: "PublicKey", value: "{{ server_public_key }}" }
+        - { option: "EndPoint", value: "{{ EndPoint }}" }
+
+    - name: Set client configuration variables for wg0-apache.conf
+      ini_file:
+        dest: /etc/wireguard/wg0-apache.conf
+        section: Peer
+        option: "{{ item.option }}"
+        value: "{{ item.value }}"
+      loop:
+        - { option: "PublicKey", value: "{{ server_public_key }}" } 
+        - { option: "EndPoint", value: "{{ EndPoint }}" }
+
+- name: Configure WireGuard server
+  hosts: wireguard
+  tasks:
+    - name: Set client configuration variables
+      ini_file:
+        dest: /etc/wireguard/wg0.conf
+        section: Interface
+        option: "{{ item.option }}"
+        value: "{{ item.value }}"
+      loop:
+        - { option: "PrivateKey", value: "{{ server_private_key }}" }
